@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responsive Music App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-screen flex flex-col md:flex-row">
+
+  <!-- Mobile Header with drawer toggle -->
+  <div class="flex md:hidden justify-between items-center bg-gray-100 p-4">
+    <h1 class="font-bold">Music App</h1>
+    <button id="toggleDrawer" class="px-3 py-1 bg-blue-500 text-white rounded">Tags</button>
+  </div>
+
+  <!-- Drawer for tags -->
+  <div id="drawer" class="w-64 bg-gray-100 p-4 overflow-y-auto fixed md:static top-0 left-0 h-full z-20 transform -translate-x-full md:translate-x-0 transition-transform duration-300">
+    <h2 class="font-bold mb-2">Tags</h2>
+    <button id="clearTagsBtn" class="px-3 py-1 mb-2 bg-red-500 text-white rounded w-full">Clear Selected Tags</button>
+    <div id="tagsList"></div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="flex-1 p-4 md:ml-64">
+
+    <!-- Search -->
+    <div class="flex gap-2 mb-2">
+      <input id="searchInput" type="text" placeholder="Search by name" class="border p-2 w-full rounded">
+      <button id="clearSearchBtn" class="px-3 py-2 bg-gray-500 text-white rounded">Clear</button>
+    </div>
+
+    <!-- iFrame Player -->
+    <iframe id="player" class="w-full h-40 md:h-32 mb-4" allow="autoplay"></iframe>
+
+    <!-- Add Song -->
+    <div class="border p-4 rounded bg-white mb-4">
+      <h3 class="font-bold mb-2">Add Song</h3>
+      <input id="newName" type="text" placeholder="Name *" class="border p-2 w-full mb-2 rounded">
+      <input id="newLink" type="text" placeholder="Google Drive link *" class="border p-2 w-full mb-2 rounded">
+      <input id="newTags" type="text" placeholder="Tags (comma separated)" class="border p-2 w-full mb-2 rounded">
+      <div class="flex gap-2">
+        <button id="addSongBtn" class="px-4 py-2 bg-blue-500 text-white rounded">Add Song</button>
+        <button id="clearAddBtn" class="px-4 py-2 bg-gray-500 text-white rounded">Clear</button>
+      </div>
+    </div>
+
+    <!-- Playlist -->
+    <div id="playlist" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-30">
+      <div class="bg-white p-6 rounded w-96">
+        <h3 class="font-bold mb-2">Edit Song</h3>
+        <input id="editName" type="text" class="border p-2 w-full mb-2 rounded" placeholder="Name *">
+        <input id="editLink" type="text" class="border p-2 w-full mb-2 rounded" placeholder="Google Drive link *">
+        <input id="editTags" type="text" class="border p-2 w-full mb-2 rounded" placeholder="Tags (comma separated)">
+        <div class="flex gap-2 flex-wrap">
+          <button id="saveEditBtn" class="px-4 py-2 bg-green-500 text-white rounded">Save</button>
+          <button id="deleteSongBtn" class="px-4 py-2 bg-red-500 text-white rounded">Delete</button>
+          <button id="cancelEditBtn" class="px-4 py-2 bg-gray-500 text-white rounded">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+const apiBase = 'https://music-73qj.onrender.com';
+let songs = [];
+let tags = [];
+let selectedTags = [];
+let editSongId = null;
+
+function getDrivePreviewUrl(fileId) {
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
+
+async function fetchSongs() {
+  const terms = [document.getElementById('searchInput').value, ...selectedTags].filter(Boolean);
+  const res = await fetch(`${apiBase}/songs?search=${terms.join(',')}`);
+  songs = await res.json();
+  renderPlaylist();
+}
+
+async function fetchTags() {
+  const res = await fetch(`${apiBase}/tags`);
+  tags = await res.json();
+  renderTags();
+}
+
+function renderTags() {
+  const container = document.getElementById('tagsList');
+  container.innerHTML = '';
+  tags.forEach(tag => {
+    const div = document.createElement('div');
+    div.textContent = tag;
+    div.className = `p-2 cursor-pointer rounded mb-1 ${selectedTags.includes(tag) ? 'bg-blue-500 text-white' : 'bg-white'}`;
+    div.onclick = () => toggleTag(tag);
+    container.appendChild(div);
+  });
+}
+
+function toggleTag(tag) {
+  if (selectedTags.includes(tag)) {
+    selectedTags = selectedTags.filter(t => t !== tag);
+  } else {
+    selectedTags.push(tag);
+  }
+  renderTags();
+  fetchSongs();
+}
+
+function renderPlaylist() {
+  const container = document.getElementById('playlist');
+  container.innerHTML = '';
+  songs.forEach(song => {
+    const card = document.createElement('div');
+    card.className = 'border p-3 rounded hover:shadow bg-white';
+    card.innerHTML = `
+      <div class="font-bold">${song.name}</div>
+      <div class="text-sm">${song.tags.join(', ')}</div>
+      <div class="flex gap-2 mt-2 flex-wrap">
+        <button class="px-2 py-1 bg-blue-500 text-white rounded">Play</button>
+        <button class="px-2 py-1 bg-green-500 text-white rounded">Edit</button>
+      </div>
+    `;
+    card.querySelector('button:nth-child(1)').onclick = () => playSong(song);
+    card.querySelector('button:nth-child(2)').onclick = () => openEditModal(song);
+    container.appendChild(card);
+  });
+}
+
+function playSong(song) {
+  document.getElementById('player').src = getDrivePreviewUrl(song.driveFileId);
+}
+
+async function addSong() {
+  const name = document.getElementById('newName').value.trim();
+  const link = document.getElementById('newLink').value.trim();
+  if (!name || !link) {
+    alert('Name and Drive link are required');
+    return;
+  }
+  const driveFileId = link.split('/d/')[1]?.split('/')[0] || link;
+  const tags = document.getElementById('newTags').value.split(',').map(t => t.trim()).filter(Boolean);
+  await fetch(`${apiBase}/songs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, driveFileId, tags })
+  });
+  clearAddForm();
+  fetchSongs();
+  fetchTags();
+}
+
+function clearAddForm() {
+  document.getElementById('newName').value = '';
+  document.getElementById('newLink').value = '';
+  document.getElementById('newTags').value = '';
+}
+
+function openEditModal(song) {
+  editSongId = song._id;
+  document.getElementById('editName').value = song.name;
+  document.getElementById('editLink').value = song.driveFileId;
+  document.getElementById('editTags').value = song.tags.join(',');
+  document.getElementById('editModal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.add('hidden');
+}
+
+async function saveEdit() {
+  const name = document.getElementById('editName').value.trim();
+  const driveFileId = document.getElementById('editLink').value.trim();
+  if (!name || !driveFileId) {
+    alert('Name and Drive link are required');
+    return;
+  }
+  const tags = document.getElementById('editTags').value.split(',').map(t => t.trim()).filter(Boolean);
+  await fetch(`${apiBase}/songs/${editSongId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, driveFileId, tags })
+  });
+  closeEditModal();
+  fetchSongs();
+  fetchTags();
+}
+
+async function deleteSong() {
+  if (!confirm('Delete this song?')) return;
+  await fetch(`${apiBase}/songs/${editSongId}`, { method: 'DELETE' });
+  closeEditModal();
+  fetchSongs();
+  fetchTags();
+}
+
+// Clear all selected tags
+document.getElementById('clearTagsBtn').addEventListener('click', () => {
+  selectedTags = [];
+  renderTags();
+  fetchSongs();
+});
+
+// Clear search
+document.getElementById('clearSearchBtn').addEventListener('click', () => {
+  document.getElementById('searchInput').value = '';
+  fetchSongs();
+});
+
+// Clear add song form
+document.getElementById('clearAddBtn').addEventListener('click', clearAddForm);
+
+document.getElementById('searchInput').addEventListener('input', fetchSongs);
+document.getElementById('addSongBtn').addEventListener('click', addSong);
+document.getElementById('saveEditBtn').addEventListener('click', saveEdit);
+document.getElementById('deleteSongBtn').addEventListener('click', deleteSong);
+document.getElementById('cancelEditBtn').addEventListener('click', closeEditModal);
+
+// Drawer toggle for mobile
+document.getElementById('toggleDrawer').addEventListener('click', () => {
+  const drawer = document.getElementById('drawer');
+  drawer.classList.toggle('-translate-x-full');
+});
+
+// Initialize
+fetchSongs();
+fetchTags();
+</script>
+</body>
+</html>
